@@ -32,6 +32,7 @@ from ..utils import record_type, remove_timezone
 try:
     from nonebot.adapters.console import Bot, Message, MessageEvent, MessageSegment
     from nonechat import ConsoleMessage, Emoji, Text
+    from nonechat.model import DIRECT, Channel
 
     adapter = SupportAdapter.console
 
@@ -69,16 +70,25 @@ try:
             if e or api not in ["send_msg"]:
                 return
 
+            # console 的 send_msg 参数为 content(ConsoleMessage) + channel(Channel)，
+            # 没有 user_id/message；场景id与 uninfo 的 console 规范对齐：
+            # 私聊 "private:<user_id>"，公共频道为 channel.id
+            channel: Channel = data["channel"]
+            is_private = channel.id == DIRECT.id or channel.id.startswith("private:")
             session = Session(
                 self_id=bot.self_id,
                 adapter=adapter,
                 scope=SupportScope.console,
-                scene=Scene(id=data["user_id"], type=SceneType.PRIVATE),
+                scene=(
+                    Scene(id=channel.id, type=SceneType.PRIVATE)
+                    if is_private
+                    else Scene(id=channel.id, type=SceneType.GROUP)
+                ),
                 user=User(id=bot.self_id),
             )
             session_persist_id = await get_session_persist_id(session)
 
-            elements = ConsoleMessage(data["message"])
+            elements = ConsoleMessage(data["content"])
             message = Message()
             for elem in elements:
                 if isinstance(elem, Text):
